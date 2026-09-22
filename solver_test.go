@@ -2,6 +2,7 @@ package mathsolver
 
 import (
 	"errors"
+	"os"
 	"testing"
 )
 
@@ -137,5 +138,29 @@ func TestSolveStillWrongUnverified(t *testing.T) {
 	}
 	if r.Verified || r.Retries != 1 {
 		t.Fatalf("r=%+v", r)
+	}
+}
+
+
+func TestSmokeRealAPI(t *testing.T) {
+	key := os.Getenv("SMOKE_API_KEY")
+	if key == "" {
+		t.Skip("smoke: set SMOKE_API_KEY to run")
+	}
+	base := os.Getenv("SMOKE_BASE_URL")
+	if base == "" {
+		base = "https://api.openai.com/v1"
+	}
+	solver, err := New(key, base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := solver.Solve("2x + 3 = 11, solve for x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("smoke: answer=%v verified=%v retries=%d", r.Answer, r.Verified, r.Retries)
+	if !r.Verified || r.Answer != 4 {
+		t.Fatalf("bad result: %+v", r)
 	}
 }
