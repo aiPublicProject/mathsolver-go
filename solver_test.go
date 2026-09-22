@@ -1,20 +1,12 @@
 package mathsolver
 
 import (
-	"encoding/json"
 	"errors"
 	"testing"
 )
 
 const goodReply = `{"answer": 4, "steps": ["Subtract 3: 2x = 8", "Divide by 2: x = 4"], "verification": {"expression": "(11-3)/2"}}`
 const wrongReply = `{"answer": 4, "steps": ["..."], "verification": {"expression": "(11-3)/3"}}`
-
-func wrap(content string) string {
-	b, _ := json.Marshal(map[string]any{
-		"choices": []any{map[string]any{"message": map[string]any{"content": content}}},
-	})
-	return string(b)
-}
 
 func TestEvaluatorPrecedence(t *testing.T) {
 	cases := map[string]float64{
@@ -61,7 +53,7 @@ func TestSolveVerifiedFirstTry(t *testing.T) {
 	solver, err := NewWithTransport("sk-test", "https://api.deepseek.com/v1", func(url string, body []byte, key string) (string, error) {
 		calls++
 		gotURL, gotKey = url, key
-		return wrap(goodReply), nil
+		return goodReply, nil
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -87,9 +79,9 @@ func TestSolveRetryRecovers(t *testing.T) {
 	solver, _ := NewWithTransport("sk", "https://api.x", func(string, []byte, string) (string, error) {
 		n++
 		if n == 1 {
-			return wrap(wrongReply), nil
+			return wrongReply, nil
 		}
-		return wrap(goodReply), nil
+		return goodReply, nil
 	})
 	r, err := solver.Solve("2x+3=11")
 	if err != nil {
@@ -107,7 +99,7 @@ func TestSolveInvalidJSONThenOK(t *testing.T) {
 		if n == 1 {
 			return "no json", nil
 		}
-		return wrap(goodReply), nil
+		return goodReply, nil
 	})
 	r, err := solver.Solve("1+1")
 	if err != nil || !r.Verified {
@@ -138,7 +130,7 @@ func TestSolveHTTPErrorNoRetry(t *testing.T) {
 }
 
 func TestSolveStillWrongUnverified(t *testing.T) {
-	solver, _ := NewWithTransport("sk", "https://api.x", func(string, []byte, string) (string, error) { return wrap(wrongReply), nil })
+	solver, _ := NewWithTransport("sk", "https://api.x", func(string, []byte, string) (string, error) { return wrongReply, nil })
 	r, err := solver.Solve("2x+3=11")
 	if err != nil {
 		t.Fatal(err)
