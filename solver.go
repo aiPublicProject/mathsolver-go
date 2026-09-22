@@ -422,34 +422,43 @@ func parseModelReply(text string) (Parsed, error) {
 	return Parsed{Answer: m.Answer, Steps: m.Steps, Expression: m.Verification.Expression}, nil
 }
 
-type Options struct {
-	APIKey    string
-	BaseURL   string // default https://api.openai.com/v1
-	Model     string // default gpt-4o-mini
-	Transport Transport
+// Client is a BYOK client for an OpenAI-compatible endpoint.
+// Instantiate once with New/NewWithTransport, then call Solve for each problem.
+type Client struct {
+	// APIKey is the user's own key (BYOK).
+	APIKey string
+	// BaseURL is any OpenAI-compatible endpoint, e.g. https://api.deepseek.com/v1
+	BaseURL string
+	// Model defaults to gpt-4o-mini; set after New if needed.
+	Model string
+
+	transport Transport
 }
 
-// Solve solves a math problem with a BYOK key on an OpenAI-compatible endpoint.
-func Solve(problem string, opts Options) (Result, error) {
-	if opts.APIKey == "" {
-		return Result{}, errf("NO_API_KEY", "APIKey is required (BYOK)")
+// New creates a client with the built-in HTTP transport.
+func New(apiKey, baseURL string) (*Client, error) {
+	return NewWithTransport(apiKey, baseURL, DefaultTransport)
+}
+
+// NewWithTransport creates a client with an injected transport (url, body, apiKey) -> reply.
+func NewWithTransport(apiKey, baseURL string, transport Transport) (*Client, error) {
+	if apiKey == "" {
+		return nil, errf("NO_API_KEY", "apiKey is required (BYOK)")
 	}
+	base := strings.TrimRight(baseURL, "/")
+	if !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
+		return nil, errf("BAD_BASE_URL", "baseURL must be an http(s) URL, e.g. https://api.deepseek.com/v1")
+	}
+	return &Client{APIKey: apiKey, BaseURL: base, Model: "gpt-4o-mini", transport: transport}, nil
+}
+
+// Solve solves a math problem. Verified is true only when the model's
+// verification expression independently re-evaluates to the answer.
+func (c *Client) Solve(problem string) (Result, error) {
 	if strings.TrimSpace(problem) == "" {
 		return Result{}, errf("NO_PROBLEM", "problem must be non-empty")
 	}
-	base := opts.BaseURL
-	if base == "" {
-		base = "https://api.openai.com/v1"
-	}
-	model := opts.Model
-	if model == "" {
-		model = "gpt-4o-mini"
-	}
-	transport := opts.Transport
-	if transport == nil {
-		transport = DefaultTransport
-	}
-	url := strings.TrimRight(base, "/") + "/chat/completions"
+	url := c.BaseURL + "/chat/completions"
 	messages := []message{
 		{Role: "system", Content: SystemPrompt},
 		{Role: "user", Content: problem},
@@ -460,8 +469,8 @@ func Solve(problem string, opts Options) (Result, error) {
 		Temperature float64   `json:"temperature"`
 	}
 	call := func() (string, error) {
-		body, _ := json.Marshal(payload{Model: model, Messages: messages, Temperature: 0})
-		return transport(url, body, opts.APIKey)
+		body, _ := json.Marshal(payload{Model: c.Model, Messages: messages, Temperature: 0})
+		return c.transport(url, body, c.APIKey)
 	}
 
 	var parsed Parsed

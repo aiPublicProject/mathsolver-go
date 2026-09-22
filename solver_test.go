@@ -46,15 +46,28 @@ func TestEvaluatorFunctions(t *testing.T) {
 	}
 }
 
+func TestNewValidatesCredentials(t *testing.T) {
+	if _, err := New("", "https://api.x"); err == nil || err.(*SolverError).Code != "NO_API_KEY" {
+		t.Fatalf("want NO_API_KEY, got %v", err)
+	}
+	if _, err := New("sk", "not-a-url"); err == nil || err.(*SolverError).Code != "BAD_BASE_URL" {
+		t.Fatalf("want BAD_BASE_URL, got %v", err)
+	}
+}
+
 func TestSolveVerifiedFirstTry(t *testing.T) {
 	calls := 0
 	var gotURL, gotKey string
-	tr := func(url string, body []byte, key string) (string, error) {
+	solver, err := NewWithTransport("sk-test", "https://api.deepseek.com/v1", func(url string, body []byte, key string) (string, error) {
 		calls++
 		gotURL, gotKey = url, key
 		return wrap(goodReply), nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	r, err := Solve("2x + 3 = 11, solve for x", Options{APIKey: "sk-test", Transport: tr})
+	solver.Model = "deepseek-chat"
+	r, err := solver.Solve("2x + 3 = 11, solve for x")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,21 +77,21 @@ func TestSolveVerifiedFirstTry(t *testing.T) {
 	if calls != 1 {
 		t.Fatalf("calls=%d", calls)
 	}
-	if gotURL[len(gotURL)-17:] != "/chat/completions" || gotKey != "sk-test" {
+	if gotURL != "https://api.deepseek.com/v1/chat/completions" || gotKey != "sk-test" {
 		t.Fatalf("url=%s key=%s", gotURL, gotKey)
 	}
 }
 
 func TestSolveRetryRecovers(t *testing.T) {
 	n := 0
-	tr := func(string, []byte, string) (string, error) {
+	solver, _ := NewWithTransport("sk", "https://api.x", func(string, []byte, string) (string, error) {
 		n++
 		if n == 1 {
 			return wrap(wrongReply), nil
 		}
 		return wrap(goodReply), nil
-	}
-	r, err := Solve("2x+3=11", Options{APIKey: "sk", Transport: tr})
+	})
+	r, err := solver.Solve("2x+3=11")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,43 +102,35 @@ func TestSolveRetryRecovers(t *testing.T) {
 
 func TestSolveInvalidJSONThenOK(t *testing.T) {
 	n := 0
-	tr := func(string, []byte, string) (string, error) {
+	solver, _ := NewWithTransport("sk", "https://api.x", func(string, []byte, string) (string, error) {
 		n++
 		if n == 1 {
 			return "no json", nil
 		}
 		return wrap(goodReply), nil
-	}
-	r, err := Solve("1+1", Options{APIKey: "sk", Transport: tr})
+	})
+	r, err := solver.Solve("1+1")
 	if err != nil || !r.Verified {
 		t.Fatalf("err=%v r=%+v", err, r)
 	}
 }
 
 func TestSolveInvalidJSONTwice(t *testing.T) {
-	tr := func(string, []byte, string) (string, error) { return "nothing", nil }
-	_, err := Solve("1+1", Options{APIKey: "sk", Transport: tr})
+	solver, _ := NewWithTransport("sk", "https://api.x", func(string, []byte, string) (string, error) { return "nothing", nil })
+	_, err := solver.Solve("1+1")
 	var se *SolverError
 	if !errors.As(err, &se) || se.Code != "INVALID_JSON" {
 		t.Fatalf("err=%v", err)
 	}
 }
 
-func TestSolveNoAPIKey(t *testing.T) {
-	_, err := Solve("1+1", Options{})
-	var se *SolverError
-	if !errors.As(err, &se) || se.Code != "NO_API_KEY" {
-		t.Fatalf("err=%v", err)
-	}
-}
-
 func TestSolveHTTPErrorNoRetry(t *testing.T) {
 	calls := 0
-	tr := func(string, []byte, string) (string, error) {
+	solver, _ := NewWithTransport("sk", "https://api.x", func(string, []byte, string) (string, error) {
 		calls++
 		return "", errf("HTTP_ERROR", "401")
-	}
-	_, err := Solve("1+1", Options{APIKey: "sk", Transport: tr})
+	})
+	_, err := solver.Solve("1+1")
 	var se *SolverError
 	if !errors.As(err, &se) || se.Code != "HTTP_ERROR" || calls != 1 {
 		t.Fatalf("err=%v calls=%d", err, calls)
@@ -133,8 +138,8 @@ func TestSolveHTTPErrorNoRetry(t *testing.T) {
 }
 
 func TestSolveStillWrongUnverified(t *testing.T) {
-	tr := func(string, []byte, string) (string, error) { return wrap(wrongReply), nil }
-	r, err := Solve("2x+3=11", Options{APIKey: "sk", Transport: tr})
+	solver, _ := NewWithTransport("sk", "https://api.x", func(string, []byte, string) (string, error) { return wrap(wrongReply), nil })
+	r, err := solver.Solve("2x+3=11")
 	if err != nil {
 		t.Fatal(err)
 	}
