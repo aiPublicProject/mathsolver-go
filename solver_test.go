@@ -265,6 +265,9 @@ func TestSmokeRealAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if m := os.Getenv("SMOKE_MODEL"); m != "" {
+		solver.Model = m
+	}
 	r, err := solver.Solve("2x + 3 = 11, solve for x")
 	if err != nil {
 		t.Fatal(err)
