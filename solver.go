@@ -663,7 +663,11 @@ func (c *Client) Solve(problem string) (Result, error) {
 		if !outcome.ok {
 			reason = fmt.Sprintf("program failed to execute (%s: %s)", outcome.err.Code, outcome.err.Message)
 		} else {
-			reason = fmt.Sprintf("check evaluated to %v instead of 0", *outcome.checkValue)
+			cv := "none"
+			if outcome.checkValue != nil {
+				cv = strconv.FormatFloat(*outcome.checkValue, 'g', -1, 64)
+			}
+			reason = fmt.Sprintf("check evaluated to %s instead of 0", cv)
 		}
 		raw, _ := json.Marshal(parsed)
 		messages = append(messages, message{"assistant", string(raw)},
