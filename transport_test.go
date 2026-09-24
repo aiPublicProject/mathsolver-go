@@ -56,7 +56,7 @@ func mockHTTPClient(contents []string, statuses []int, captured *[]capturedCall)
 			StatusCode: status,
 			Body:       io.NopCloser(strings.NewReader(envelope)),
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
-		}
+		}, nil
 	})}
 }
 
